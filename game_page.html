@@ -1,0 +1,351 @@
+<!doctype html>
+<html>
+  <!-- <script src="https://code.jquery.com/jquery-1.11.1.js"></script> -->
+  <head>
+    <title>Interactive Chess Game</title>
+    <style>
+
+      body { font: "Times New Roman", Times, serif;
+			background-image: url('img/background2.jpg');
+			background-size: 150vw 150vh;
+	  }
+
+      #chessBoard{
+        font-size: 3em;
+      }
+
+      #chessBoard td{
+          width: 1.8em;
+          height: 1.8em;
+      }
+
+      #chessBoard tr:nth-child(odd) td:nth-child(even),
+      #chessBoard tr:nth-child(even) td:nth-child(odd){
+          background-color: rgb(160,82,45);
+          border: 1px solid black;
+      }
+      #chessBoard tr:nth-child(even) td:nth-child(even),
+      #chessBoard tr:nth-child(odd) td:nth-child(odd){
+          background-color: rgb(222,184,135);
+          border: 1px solid black;
+      }
+
+	  ul {
+		list-style-type: none;
+		overflow: hidden;
+		background-color: #333;
+		width: 100%;
+		}
+
+	.navbar {
+		background-color: #333;
+		bottom: 0;
+		width: 100%;
+		}
+
+
+	.button1 {
+		background-color: red; /* Blue */
+		border: none;
+		border-radius: 20px;
+		color: white;
+		padding: 10px 32px;
+		text-align: center;
+		text-decoration: none;
+		font-size: 1.5em;
+		margin: 0 auto;
+		cursor: pointer;
+		width: 200px;
+		justify-content: center;
+		}
+
+	.tag1 {
+		border-radius: 15px;
+    font-size: 1.3em;
+		background-color: black;
+		margin: 0 auto;
+		width: 15%;
+		text-align:center;
+		padding: 10px 32px;
+		}
+
+	.sidebar {
+		display: inline-block;
+		background-color: grey;
+		right: 10%;
+		height: 400px;
+		width: 200px;
+		}
+	buttonbox {
+		background-image: url("background.jpg");
+		right: 0;
+		width: 17%;
+		background-color: #1111;
+		position: fixed;
+		height: 100%;
+		margin-top: 15px;
+		overflow-wrap: break-word;
+		border-style: solid;
+		border-width: 2px;
+	}
+  #message{
+    font-size:1.5em !important;
+  }
+
+
+    </style>
+  </head>
+  <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.4.1/jquery.min.js"></script>
+  <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css" integrity="sha384-ggOyR0iXCbMQv3Xipma34MD+dH/1fQ784/j6cY/iJTQUOhcWr7x9JvoRxT2MZw1T" crossorigin="anonymous">
+  <script src="https://kit.fontawesome.com/d9c3597be6.js" crossorigin="anonymous"></script>
+  <script src="/socket.io/socket.io.js"></script>
+  <script type="text/javascript">
+    const chessMapping = {
+      "rock": "fa-chess-rook",
+      "knight": "fa-chess-knight",
+      "bishop": "fa-chess-bishop",
+      "queen": "fa-chess-queen",
+      "king": "fa-chess-king",
+      "pawn": "fa-chess-pawn"
+    }
+
+    $(function(){
+      var socket = io();
+      socket.emit("join_game_page");
+      var room = null;
+      var msg = null;
+      var is_p1 = null;
+      var clicked_cnt = 0;
+      var clicked_pos = null;
+      function get_pos_id(row, col){
+        return row + "," + col;
+      }
+      function display_last_move(){
+        var prev_moves = room.chess.prev_moves;
+        if(prev_moves.length == 0)
+          return;
+        var from = prev_moves[prev_moves.length-1].from;
+        var to = prev_moves[prev_moves.length-1].to;
+
+        var from_id = get_pos_id(from.row, from.col);
+        var to_id = get_pos_id(to.row, to.col);
+        var color = (is_your_turn() == true)? "red": "green";
+
+        document.getElementById(from_id).style.border = "4px solid " + color;
+        document.getElementById(to_id).style.border = "4px solid " + color;
+        document.getElementById(to_id).style.border = "4px solid " + color;
+
+      }
+
+      render_board = function(server_board) {
+        var table = document.getElementById("chessBoard");
+        table.innerHTML = "";
+        var size = server_board.length;
+        for (var i=0; i<size; i++) {
+          var row = table.appendChild(document.createElement("tr"));
+          for (var j=0; j<size; j++) {
+            var piece = document.createElement("td");
+            var server_piece = server_board[i][j];
+
+            var id = i + "," + j;
+
+            if(server_piece != null){
+              var is_black = !server_piece.is_player1;
+              var icon = document.createElement("i");
+              icon.classList.add("fa");
+              icon.classList.add(chessMapping[server_piece.type]);
+              piece.appendChild(icon);
+              icon.style.color = (is_black == true)? "black" : "rgb(242, 242, 242)"
+
+            }
+            piece.id = id;
+            piece.onclick = on_click;
+            row.appendChild(piece);
+
+
+          }
+
+        }
+        //document.getElementById("forfeit").style.display = "inline-block";
+        display_last_move();
+      }
+      on_click = function() {
+        var pos = this.id.split(",");
+
+        if(clicked_cnt == 0){
+          clicked_cnt++;
+          clicked_pos = pos;
+
+          this.style.border = "4px solid orange";
+          var r = parseInt(pos[0]);
+          var c = parseInt(pos[1]);
+          var avail_moves = room.chess.board[r][c].available_moves;
+          for (var i = 0; i < avail_moves.length; i++) {
+            var id = avail_moves[i].row + "," + avail_moves[i].col;
+            document.getElementById(id).style.border = "4px solid yellow";
+          }
+        }
+        else{
+          var pos_source = clicked_pos;
+          var pos_des = pos;
+          var move_string = pos_source[0] + ',' + pos_source[1] + ',' + pos_des[0] + ',' + pos_des[1];
+          socket.emit('move', move_string);
+          clicked_pos = null;
+          clicked_cnt = 0;
+        }
+      }
+      function is_your_turn(){
+        var is_p1_turn = room.chess.p1_turn;
+        if(is_p1_turn == is_p1)
+          return true;
+        return false;
+      }
+      function update_userinfo(){
+        if(is_your_turn()){
+          $("#turn").html("Your turn");
+        }
+        else{
+          $("#turn").html("The other player turn");
+        }
+
+        var p1_username = room.p1_username;
+        var p2_username = room.p2_username;
+        var p1_side = "You : ";
+        var p2_side = "Your Opponent : "
+        var p1_color = 'green';
+        var p2_color = 'red';
+        if(!is_p1){ //swap for the side and color
+          var tmp = p1_side;
+          p1_side = p2_side;
+          p2_side = tmp;
+          tmp = p1_color;
+          p1_color = p2_color;
+          p2_color = tmp
+        }
+        $("#p1_info").html(p1_side + p1_username);
+        $("#p2_info").html(p2_side + p2_username);
+        $("#p1_info").css('color',  p1_color);
+        $("#p2_info").css('color',  p2_color);
+      }
+      function update_status(text){
+        $("#message").html(text);
+      }
+      function update_game_status(){
+        var game_status = room.chess.game_status
+        console.log(game_status)
+        if(game_status == room.chess.DRAW){
+          update_status("Draw Game!");
+          return;
+        }
+        if(game_status == room.chess.P1_WIN || game_status == room.chess.P2_WIN){
+          p1_win = (game_status == room.chess.P1_WIN)? true: false;
+          if(is_p1 && p1_win){
+            update_status("You win!!");
+          }
+          else{
+            update_status("Checkmate! You lose :(");
+          }
+          return;
+        }
+
+        if(room.chess.is_check == true){
+          if(is_p1 == room.chess.p1_turn)
+            update_status("You are in check");
+          else
+            update_status("Your opponent are in check!");
+        }
+        else{
+          update_status(msg);
+        }
+      }
+      function update_room_info(){
+        $("#room").html("Room Number: " + room.room_number);
+        update_userinfo();
+        update_game_status();
+
+      }
+      $("#quit").on("click", function(){
+        console.log('Quit game');
+        socket.emit('quit', room);
+      });
+      socket.on('quit', function(response){
+        if(response.success){
+          window.location.replace('/');
+        }
+        else{
+          update_status(response.data.msg)
+        }
+
+      })
+      socket.on('msg', function(response){
+        update_status(response.error);
+      })
+      socket.on('render', function(response){
+        console.log("Request to render", response)
+        room = response.data.details;
+        msg = response.data.msg;
+        is_p1 = response.data.is_p1
+        render_board(room.chess.board);
+        update_room_info();
+      })
+      socket.on('join', function(response){
+        if(response.success){
+        }
+        else{
+          update_status(response.error)
+        }
+      });
+    });
+
+  </script>
+  <body>
+    <!--<div class="container-fluid text-center h2 m-3" id="room">
+    </div> -->
+
+	<ul>
+		<center>
+		<h2 style="color:white" id="room"></h2>
+		<p id="message" style="color:white"></p>
+		</center>
+	</ul>
+<!--
+	<buttonbox>
+
+			<div class="movelogs" style="height:0%; padding:0px; background-color: white;"></div>
+
+				<center>
+
+					<br>
+					<form>
+						<h3>Captured Pieces</h3>
+					</form>
+
+					<br>
+				</center>
+
+
+	</buttonbox> -->
+
+
+	<div>
+		<center>
+		<h2 id="turn"><h2>
+		</center>
+	</div>
+
+
+	 <div class="tag1" id="p2_info"></div>
+
+    <table class='mx-auto text-center m-3' id="chessBoard"></table>
+
+
+    <div class="tag1" id="p1_info"></div>
+
+    <br>
+	<div class="navbar">
+    <button class='button1' id="quit">Quit Game</button>
+	</div>
+
+
+  </body>
+</html>
